@@ -22,6 +22,11 @@ class Settings(BaseSettings):
 
     LOG_LEVEL: str = "INFO"
     SENTRY_DSN: Optional[str] = None
+    SMTP_HOST: Optional[str] = None
+    SMTP_PORT: Optional[int] = None
+    SMTP_USER: Optional[str] = None
+    SMTP_PASS: Optional[str] = None
+    SMTP_FROM: Optional[str] = None
 
     # 使用 .env 文件读取环境变量 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")

@@ -70,7 +70,7 @@ export default function Docs() {
       </div>
       <div className="card">
         <div className="cardBody">
-          {err ? <div className="note error" style={{marginBottom:10}}>{err}</div> : null}
+          {err ? <div className="alert alertErr" style={{marginBottom:10}}>{err}</div> : null}
           <table className="table">
             <thead>
               <tr>
@@ -106,7 +106,7 @@ export default function Docs() {
               ))}
               {docs.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="note">暂无文档</td>
+                  <td colSpan={4} className="note" style={{ padding: 16 }}>暂无文档</td>
                 </tr>
               ) : null}
             </tbody>

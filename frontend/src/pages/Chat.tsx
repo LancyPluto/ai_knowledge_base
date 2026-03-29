@@ -1,31 +1,122 @@
-import { useEffect, useMemo, useState } from "react"
-import { chatStream, closeSession } from "../api"
-import { useNavigate } from "react-router-dom"
+import { useEffect, useMemo, useState, useRef } from "react"
+import { chatStream, getChatSessions, createChatSession, deleteChatSession, getChatMessages } from "../api"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 
+interface Session {
+  id: string
+  title: string
+  updated_at: string
+}
+
+interface Message {
+  role: string
+  content: string
+}
+
 export default function Chat() {
-  const [sessionId, setSessionId] = useState<string>(()=>Math.random().toString(36).slice(2))
+  const [sessions, setSessions] = useState<Session[]>([])
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
+  
   const [input, setInput] = useState("")
-  const [messages, setMessages] = useState<{role:string;content:string}[]>([])
+  const [messages, setMessages] = useState<Message[]>([])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [lastSources, setLastSources] = useState<string[]>([])
-  const nav = useNavigate()
+
+  const chatBoxRef = useRef<HTMLDivElement>(null)
 
   const canSend = useMemo(() => !!input.trim() && !busy, [input, busy])
+
+  useEffect(() => {
+    loadSessions()
+  }, [])
+
+  useEffect(() => {
+    if (chatBoxRef.current) {
+      chatBoxRef.current.scrollTop = chatBoxRef.current.scrollHeight
+    }
+  }, [messages])
+
+  useEffect(() => {
+    if (activeSessionId) {
+      loadMessages(activeSessionId)
+    } else {
+      setMessages([])
+      setLastSources([])
+    }
+  }, [activeSessionId])
+
+  async function loadSessions() {
+    try {
+      const data = await getChatSessions()
+      setSessions(data)
+      if (data.length > 0 && !activeSessionId) {
+        setActiveSessionId(data[0].id)
+      }
+    } catch (e) {
+      console.error("Failed to load sessions", e)
+    }
+  }
+
+  async function loadMessages(sid: string) {
+    setBusy(true)
+    setErr(null)
+    try {
+      const msgs = await getChatMessages(sid)
+      setMessages(msgs)
+      setLastSources([])
+    } catch (e: any) {
+      setErr("加载历史记录失败: " + (e?.message || ""))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleCreateSession() {
+    setBusy(true)
+    try {
+      const s = await createChatSession()
+      await loadSessions()
+      setActiveSessionId(s.id)
+    } catch (e: any) {
+      setErr("创建新对话失败: " + (e?.message || ""))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleDeleteSession(sid: string, e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!confirm("确定要删除这个对话吗？")) return
+    try {
+      await deleteChatSession(sid)
+      if (activeSessionId === sid) {
+        setActiveSessionId(null)
+      }
+      await loadSessions()
+    } catch (err: any) {
+      alert("删除失败: " + err.message)
+    }
+  }
 
   async function send() {
     if (!input.trim() || busy) return
     const q = input
     setErr(null)
     setBusy(true)
+    
     const assistantIndex = messages.length + 1
-    setMessages(m=>[...m,{role:"user",content:q},{role:"assistant",content:""}])
+    setMessages(m => [...m, {role: "user", content: q}, {role: "assistant", content: ""}])
     setInput("")
+    
     try {
-      await chatStream(q, sessionId, (evt) => {
+      await chatStream(q, activeSessionId, (evt) => {
         if (evt?.type === "start") {
+          if (!activeSessionId && evt.session_id) {
+             setActiveSessionId(evt.session_id)
+             loadSessions()
+          }
           setLastSources(evt.sources || [])
           return
         }
@@ -52,38 +143,68 @@ export default function Chat() {
       setBusy(false)
     }
   }
-  async function reset() {
-    setBusy(true)
-    setErr(null)
-    try {
-      await closeSession(sessionId)
-    } catch {}
-    setSessionId(Math.random().toString(36).slice(2))
-    setMessages([])
-    setLastSources([])
-    setBusy(false)
-  }
-  useEffect(()=>{},[sessionId])
+
   return (
-    <div>
-      <div className="topbar">
-        <div>
-          <div className="pageTitle">智能问答</div>
-          <div className="pageDesc">基于你上传的文档检索后回答，临时会话仅在当前会话有效</div>
+    <div style={{ display: "flex", gap: "20px", height: "calc(100vh - 44px)" }}>
+      <div className="card" style={{ width: "260px", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div className="cardBody" style={{ paddingBottom: 0 }}>
+          <div className="rowWrap" style={{ justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+            <div>
+              <div className="sectionTitle">对话</div>
+              <div className="note" style={{ marginTop: 4 }}>你的历史会话会长期保存</div>
+            </div>
+            <span className="pill">{sessions.length}</span>
+          </div>
+          <button className="btn btnPrimary" style={{ width: "100%" }} onClick={handleCreateSession} disabled={busy}>
+            新建对话
+          </button>
         </div>
-        <div className="rowWrap">
-          <button className="btn" disabled={busy} onClick={() => nav(-1)}>返回</button>
-          <span className="pill">session_id: {sessionId}</span>
-          <button className="btn" disabled={busy} onClick={reset}>关闭并新建</button>
+        <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 16px" }}>
+          {sessions.length === 0 ? (
+            <div className="note" style={{ textAlign: "center", marginTop: "20px" }}>暂无历史对话</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {sessions.map(s => (
+                <div 
+                  key={s.id} 
+                  className={`navItem ${activeSessionId === s.id ? "navItemActive" : ""}`}
+                  style={{ cursor: "pointer", justifyContent: "space-between" }}
+                  onClick={() => setActiveSessionId(s.id)}
+                >
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {s.title}
+                  </span>
+                  <button 
+                    className="btn btnGhost" 
+                    style={{ padding: "2px 8px", fontSize: "14px", opacity: 0.7 }}
+                    onClick={(e) => handleDeleteSession(s.id, e)}
+                    aria-label="删除对话"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
-      <div className="card">
-        <div className="cardBody">
-          <div className="chatBox">
+
+      <div className="card" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div className="cardBody" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", padding: "20px" }}>
+          <div className="topbar" style={{ marginBottom: "12px" }}>
+            <div>
+              <div className="pageTitle">智能问答</div>
+              <div className="pageDesc">基于你上传的文档检索后回答</div>
+            </div>
+          </div>
+          
+          <div className="chatBox" ref={chatBoxRef} style={{ flex: 1, height: "auto", marginBottom: "16px" }}>
             {messages.length === 0 ? (
-              <div className="note">从一个问题开始，例如：请总结刚上传文档的要点</div>
+              <div className="note" style={{ textAlign: "center", marginTop: "40px" }}>
+                {activeSessionId ? "这是一个新的对话，请提问" : "在左侧选择对话或新建一个对话"}
+              </div>
             ) : null}
-            {messages.map((m,i)=>(
+            {messages.map((m, i) => (
               <div key={i} className={"bubble " + (m.role === "user" ? "bubbleUser" : "bubbleAi")}>
                 {m.role === "assistant" ? (
                   <ReactMarkdown className="md" remarkPlugins={[remarkGfm]}>
@@ -95,16 +216,18 @@ export default function Chat() {
               </div>
             ))}
           </div>
+
           {lastSources.length ? (
-            <div className="note" style={{marginTop:10}}>来源：{lastSources.join("、")}</div>
+            <div className="alert alertInfo" style={{ marginBottom: "10px" }}>来源：{lastSources.join("、")}</div>
           ) : null}
-          {err ? <div className="note error" style={{marginTop:10}}>{err}</div> : null}
-          <div className="row" style={{marginTop:12}}>
+          {err ? <div className="alert alertErr" style={{ marginBottom: "10px" }}>{err}</div> : null}
+          
+          <div className="row">
             <input
               className="input"
               value={input}
-              onChange={e=>setInput(e.target.value)}
-              placeholder="输入问题..."
+              onChange={e => setInput(e.target.value)}
+              placeholder={activeSessionId ? "输入问题..." : "输入问题自动创建新对话..."}
               onKeyDown={e => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault()
@@ -112,7 +235,7 @@ export default function Chat() {
                 }
               }}
             />
-            <button className="btn btnPrimary" disabled={!canSend} onClick={send}>
+            <button className="btn btnPrimary" disabled={!canSend} onClick={send} style={{ flexShrink: 0 }}>
               {busy ? "发送中..." : "发送"}
             </button>
           </div>

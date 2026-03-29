@@ -18,30 +18,44 @@ async function parseError(res: Response) {
   }
 }
 
-export async function register(username: string, password: string) {
-  const res = await fetch(`${API_BASE}/auth/register`, {
+export async function register(email: string, code: string, password: string) {
+  const res = await fetch(`${API_BASE}/auth/register_email`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password })
+    body: JSON.stringify({ email, code, password })
   })
   if (!res.ok) throw new Error(await parseError(res))
   return res.json()
 }
 
-export async function login(username: string, password: string) {
-  const res = await fetch(`${API_BASE}/auth/login`, {
+export async function sendCode(email: string, purpose: "register" | "login" = "register") {
+  const res = await fetch(`${API_BASE}/auth/send_code`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password })
+    body: JSON.stringify({ email, purpose })
   })
   if (!res.ok) throw new Error(await parseError(res))
   return res.json()
 }
 
-export async function me() {
-  const res = await fetch(`${API_BASE}/auth/me`, { headers: authHeaders() })
+export async function login(email: string, password: string) {
+  const res = await fetch(`${API_BASE}/auth/login_email`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password })
+  })
   if (!res.ok) throw new Error(await parseError(res))
   return res.json()
+}
+
+export async function getMe(token: string) {
+  const r = await fetch(API_BASE + "/auth/me", {
+    headers: {
+      Authorization: "Bearer " + token,
+    },
+  })
+  if (!r.ok) throw new Error("not authenticated")
+  return await r.json()
 }
 
 export async function uploadFile(file: File) {
@@ -83,21 +97,11 @@ export async function reuploadDoc(docId: number, file: File) {
   return res.json()
 }
 
-export async function chat(message: string, sessionId: string) {
-  const res = await fetch(`${API_BASE}/chat/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ message, session_id: sessionId, ephemeral: true })
-  })
-  if (!res.ok) throw new Error(await parseError(res))
-  return res.json()
-}
-
-export async function chatStream(message: string, sessionId: string, onEvent: (evt: any) => void) {
+export async function chatStream(message: string, sessionId: string | null, onEvent: (evt: any) => void) {
   const res = await fetch(`${API_BASE}/chat/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ message, session_id: sessionId, ephemeral: true })
+    body: JSON.stringify({ message, session_id: sessionId })
   })
   if (!res.ok || !res.body) throw new Error(await parseError(res))
 
@@ -123,11 +127,33 @@ export async function chatStream(message: string, sessionId: string, onEvent: (e
   }
 }
 
-export async function closeSession(sessionId: string) {
-  const res = await fetch(`${API_BASE}/chat/session/close?session_id=${encodeURIComponent(sessionId)}`, {
+export async function getChatSessions() {
+  const res = await fetch(`${API_BASE}/chat/sessions`, { headers: authHeaders() })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
+
+export async function createChatSession(title: string = "新对话") {
+  const res = await fetch(`${API_BASE}/chat/sessions`, {
     method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ title })
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
+
+export async function deleteChatSession(sessionId: string) {
+  const res = await fetch(`${API_BASE}/chat/sessions/${sessionId}`, {
+    method: "DELETE",
     headers: authHeaders()
   })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
+
+export async function getChatMessages(sessionId: string) {
+  const res = await fetch(`${API_BASE}/chat/sessions/${sessionId}/messages`, { headers: authHeaders() })
   if (!res.ok) throw new Error(await parseError(res))
   return res.json()
 }

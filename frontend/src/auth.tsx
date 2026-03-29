@@ -1,42 +1,29 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react"
-import { me as apiMe } from "./api"
+import { createContext, useContext, useState, useEffect, ReactNode, useMemo } from "react"
+import { getMe } from "./api"
 
-type AuthUser = { id: string; username: string; is_active: boolean }
-
-type AuthState = {
+interface AuthState {
   token: string | null
-  user: AuthUser | null
+  user: any | null
   loading: boolean
-  setToken: (token: string | null) => void
-  refreshMe: () => Promise<void>
+  setToken: (t: string | null) => void
   logout: () => void
+  refreshMe: () => Promise<void>
 }
 
-const AuthContext = createContext<AuthState | null>(null)
+const AuthContext = createContext<AuthState>({} as any)
 
-export function AuthProvider(props: { children: React.ReactNode }) {
-  const [token, setTokenState] = useState<string | null>(() => localStorage.getItem("token"))
-  const [user, setUser] = useState<AuthUser | null>(null)
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [token, setTokenState] = useState<string | null>(localStorage.getItem("token"))
+  const [user, setUser] = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
 
   function setToken(t: string | null) {
-    if (t) localStorage.setItem("token", t)
-    else localStorage.removeItem("token")
+    if (t) {
+      localStorage.setItem("token", t)
+    } else {
+      localStorage.removeItem("token")
+    }
     setTokenState(t)
-  }
-
-  async function refreshMe() {
-    if (!token) {
-      setUser(null)
-      return
-    }
-    try {
-      const u = await apiMe()
-      setUser(u)
-    } catch {
-      setToken(null)
-      setUser(null)
-    }
   }
 
   function logout() {
@@ -44,25 +31,48 @@ export function AuthProvider(props: { children: React.ReactNode }) {
     setUser(null)
   }
 
+  async function refreshMe() {
+    const currentToken = localStorage.getItem("token")
+    if (!currentToken) {
+      setUser(null)
+      return
+    }
+    try {
+      const u = await getMe(currentToken)
+      setUser(u)
+    } catch (e) {
+      console.error("fetch me failed", e)
+      // DO NOT clear token immediately on failed fetch in case it's a temporary network error
+      // setToken(null)
+      // setUser(null)
+    }
+  }
+
   useEffect(() => {
-    ;(async () => {
+    async function init() {
       setLoading(true)
       await refreshMe()
       setLoading(false)
-    })()
-  }, [token])
+    }
+    init()
+  }, [token]) // Re-run when token state changes
 
   const value = useMemo<AuthState>(
-    () => ({ token, user, loading, setToken, refreshMe, logout }),
+    () => ({
+      token,
+      user,
+      loading,
+      setToken,
+      logout,
+      refreshMe,
+    }),
     [token, user, loading]
   )
 
-  return <AuthContext.Provider value={value}>{props.children}</AuthContext.Provider>
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {
-  const ctx = useContext(AuthContext)
-  if (!ctx) throw new Error("AuthProvider missing")
-  return ctx
+  return useContext(AuthContext)
 }
 

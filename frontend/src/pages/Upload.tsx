@@ -55,18 +55,18 @@ export default function Upload() {
                 </button>
                 <span className="note">{file ? file.name : "请选择一个文件"}</span>
               </div>
-              {err ? <div className="note error" style={{marginTop:10}}>{err}</div> : null}
+              {err ? <div className="alert alertErr" style={{marginTop:10}}>{err}</div> : null}
               {result ? (
                 <div style={{marginTop:10}}>
-                  <div className="note success">
+                  <div className="alert alertOk">
                     上传成功：doc_id={result.doc_id}，已开始后台处理
                   </div>
                   <div className="rowWrap" style={{marginTop:10}}>
                     <button className="btn" onClick={reset}>继续上传</button>
-                    <button className="btn btnPrimary" onClick={() => nav("/chat")}>与 AI 交互</button>
+                    <button className="btn btnPrimary" onClick={() => nav("/chat")}>智能问答</button>
                     <button className="btn" onClick={() => nav("/docs")}>查看文档</button>
                   </div>
-                  <div className="note" style={{marginTop:8}}>
+                  <div className="alert alertInfo" style={{marginTop:8}}>
                     提示：后台处理需要几秒~几十秒，处理完成后问答效果更好
                   </div>
                 </div>
@@ -86,7 +86,7 @@ export default function Upload() {
           {result ? (
             <div style={{marginTop:12}}>
               <div className="note">返回内容</div>
-              <pre className="card" style={{padding:12,overflow:"auto"}}>{JSON.stringify(result, null, 2)}</pre>
+              <pre className="codePanel" style={{marginTop:10}}>{JSON.stringify(result, null, 2)}</pre>
             </div>
           ) : null}
         </div>

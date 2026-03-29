@@ -1,4 +1,4 @@
-import { NavLink, Route, Routes, Navigate, useLocation } from "react-router-dom"
+import { NavLink, Route, Routes, Navigate, useLocation, useNavigate } from "react-router-dom"
 import { Login, Register, Upload, Docs, Chat, Home } from "./pages"
 import { useAuth } from "./auth"
 
@@ -12,6 +12,13 @@ function Protected(props: { children: React.ReactNode }) {
 
 function Sidebar() {
   const { user, token, logout } = useAuth()
+  const nav = useNavigate()
+
+  const handleLogout = () => {
+    logout()
+    nav("/login")
+  }
+
   return (
     <div className="sidebar">
       <div className="brand">
@@ -34,21 +41,27 @@ function Sidebar() {
         <NavLink className={({ isActive }) => "navItem" + (isActive ? " navItemActive" : "")} to="/chat">
           智能问答
         </NavLink>
-        <NavLink className={({ isActive }) => "navItem" + (isActive ? " navItemActive" : "")} to="/login">
-          登录/注册
-        </NavLink>
-        <NavLink className={({ isActive }) => "navItem" + (isActive ? " navItemActive" : "")} to="/register">
-          注册
-        </NavLink>
+        {!token && (
+          <>
+            <NavLink className={({ isActive }) => "navItem" + (isActive ? " navItemActive" : "")} to="/login">
+              登录
+            </NavLink>
+            <NavLink className={({ isActive }) => "navItem" + (isActive ? " navItemActive" : "")} to="/register">
+              注册
+            </NavLink>
+          </>
+        )}
       </div>
       <div className="sidebarFooter">
-        <div className="rowWrap" style={{ justifyContent: "space-between" }}>
-          <span className="pill">{token && user ? `已登录：${user.username}` : "未登录"}</span>
-          {token ? (
-            <button className="btn btnGhost" onClick={logout}>
+        <div className="rowWrap" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap" }}>
+          <span className="pill" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '160px' }} title={token && user ? (user.email || user.username) : "未登录"}>
+            {token && user ? (user.email || user.username) : "未登录"}
+          </span>
+          {token && (
+            <button className="btn btnGhost" onClick={handleLogout} style={{ padding: '6px 8px', fontSize: '13px', flexShrink: 0 }}>
               退出
             </button>
-          ) : null}
+          )}
         </div>
       </div>
     </div>

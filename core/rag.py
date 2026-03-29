@@ -4,15 +4,33 @@ from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from core.config import settings
 from core.vector_db import get_vector_store
+from repository.chat_repo import chat_repo
+from sqlmodel.ext.asyncio.session import AsyncSession
+from core.database import engine
+from sqlalchemy.orm import sessionmaker
 import logging
 
 logger = logging.getLogger(__name__)
 
-async def get_chat_response_stream(user_input: str, user_id: str, history: list[tuple[str, str]] | None = None):
+async def get_chat_response_stream(user_input: str, user_id: str, session_id: str):
     logger.info(
         "rag_chat_stream_start",
-        extra={"event": "rag_chat_stream_start", "query_len": len(user_input), "history_len": len(history or [])},
+        extra={"event": "rag_chat_stream_start", "query_len": len(user_input), "session_id": session_id},
     )
+
+    AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    
+    # 1. Load history from DB
+    history = []
+    async with AsyncSessionLocal() as db:
+        messages = await chat_repo.get_messages_by_session(db, session_id)
+        # Format history for prompt
+        for msg in messages:
+            role_name = "User" if msg.role == "user" else "Assistant"
+            history.append((role_name, msg.content))
+        
+        # 2. Save user message to DB
+        await chat_repo.add_message(db, session_id, role="user", content=user_input)
 
     vector_store = get_vector_store()
     retriever = vector_store.as_retriever(search_kwargs={"filter": {"user_id": user_id}, "k": 3})
@@ -25,7 +43,7 @@ async def get_chat_response_stream(user_input: str, user_id: str, history: list[
         streaming=True,
     )
 
-    history_text = "\n".join([f"{r}: {c}" for r, c in (history or [])])
+    history_text = "\n".join([f"{r}: {c}" for r, c in history])
 
     rewrite_prompt = ChatPromptTemplate.from_messages(
         [
@@ -41,7 +59,16 @@ async def get_chat_response_stream(user_input: str, user_id: str, history: list[
     except Exception:
         q = user_input
 
+    # Ensure docs retrieval is awaited correctly for async retriever if it's an async retriever
+    # Langchain's as_retriever() returns a synchronous retriever by default, but we should use ainvoke for async context
     docs = await retriever.ainvoke(q)
+    
+    # 诊断日志：查看是否检索到了文档
+    logger.info(
+        "rag_retrieved_docs",
+        extra={"event": "rag_retrieved_docs", "docs_count": len(docs), "user_id": user_id, "query": q},
+    )
+
     sources = list({d.metadata.get("source", "Unknown") for d in docs})
     context_text = "\n\n".join([d.page_content for d in docs])
 
@@ -66,10 +93,16 @@ async def get_chat_response_stream(user_input: str, user_id: str, history: list[
     answer_messages = prompt.format_messages(history=history_text, context=context_text, input=q)
 
     async def token_iter():
+        full_response = ""
         async for chunk in llm.astream(answer_messages):
             token = getattr(chunk, "content", None)
             if token:
+                full_response += token
                 yield token
+        
+        # Save assistant message to DB after streaming completes
+        async with AsyncSessionLocal() as db:
+            await chat_repo.add_message(db, session_id, role="assistant", content=full_response)
 
     return sources, token_iter()
 

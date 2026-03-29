@@ -1,3 +1,4 @@
+from typing import Optional
 from pydantic import BaseModel
 
 class ChatRequest(BaseModel):
@@ -21,10 +22,27 @@ class UserIn(BaseModel):
 
 class UserOut(BaseModel):
     id: str
-    username: str
+    username: Optional[str] = None
+    email: Optional[str] = None
     is_active: bool
 
 
 class TokenOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class EmailSendCodeIn(BaseModel):
+    email: str
+    purpose: str
+
+
+class EmailRegisterIn(BaseModel):
+    email: str
+    password: str
+    code: str
+
+
+class EmailLoginIn(BaseModel):
+    email: str
+    password: str

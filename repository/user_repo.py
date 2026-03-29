@@ -8,6 +8,10 @@ class UserRepo:
         statement = select(User).where(User.username == username)
         return (await db.scalars(statement)).first()
 
+    async def get_by_email(self, db: AsyncSession, *, email: str) -> User | None:
+        statement = select(User).where(User.email == email)
+        return (await db.scalars(statement)).first()
+
     async def get_by_id(self, db: AsyncSession, *, user_id: str) -> User | None:
         return await db.get(User, user_id)
 
